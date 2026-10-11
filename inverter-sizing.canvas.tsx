@@ -16,11 +16,12 @@ import {
   Text,
   TextInput,
   useCanvasState,
+  useEffect,
   useHostTheme,
   useMemo,
 } from "cursor/canvas";
 
-type LoadId = "fridge" | "lights" | "cpap" | "o2" | "neb";
+type LoadId = "fridge" | "lights" | "tv" | "internet" | "cpap" | "o2" | "neb";
 
 interface Load {
   id: LoadId;
@@ -47,6 +48,22 @@ const DEFAULT_LOADS: Load[] = [
     watts: 60,
     surge: 60,
     hours: 8,
+  },
+  {
+    id: "tv",
+    name: "Flat screen",
+    enabled: true,
+    watts: 100,
+    surge: 150,
+    hours: 6,
+  },
+  {
+    id: "internet",
+    name: "Internet modem and router",
+    enabled: true,
+    watts: 25,
+    surge: 30,
+    hours: 24,
   },
   {
     id: "cpap",
@@ -80,8 +97,8 @@ const FUSE_SIZES = [30, 40, 50, 60, 80, 100, 125, 150, 175, 200, 250, 300, 350, 
 const EFF = 0.88;
 
 const HOURS: Record<"overnight" | "day", Record<LoadId, number>> = {
-  overnight: { fridge: 3, lights: 4, cpap: 8, o2: 8, neb: 0.5 },
-  day: { fridge: 8, lights: 8, cpap: 8, o2: 24, neb: 1 },
+  overnight: { fridge: 3, lights: 4, tv: 4, internet: 8, cpap: 8, o2: 8, neb: 0.5 },
+  day: { fridge: 8, lights: 8, tv: 6, internet: 24, cpap: 8, o2: 24, neb: 1 },
 };
 
 function nextAtLeast(steps: number[], value: number): number {
@@ -502,6 +519,18 @@ function WiringDiagram({
 
 export default function InverterSizing() {
   const [loads, setLoads] = useCanvasState<Load[]>("loads", DEFAULT_LOADS);
+  useEffect(() => {
+    setLoads((prev) => {
+      const ids = new Set(prev.map((load) => load.id));
+      const missing = DEFAULT_LOADS.filter((load) => !ids.has(load.id));
+      if (missing.length === 0) return prev;
+      return [...prev, ...missing].sort(
+        (a, b) =>
+          DEFAULT_LOADS.findIndex((item) => item.id === a.id) -
+          DEFAULT_LOADS.findIndex((item) => item.id === b.id),
+      );
+    });
+  }, [setLoads]);
   const [voltage, setVoltage] = useCanvasState("voltage", "24");
   const [chemistry, setChemistry] = useCanvasState("chemistry", "lifepo4");
   const [preset, setPreset] = useCanvasState<"overnight" | "day" | "custom">(
@@ -631,9 +660,9 @@ export default function InverterSizing() {
       <Stack gap={6}>
         <H1>120 V battery backup</H1>
         <Text tone="secondary">
-          Sizing for a refrigerator, lights, and plug-in medical devices on a
-          listed pure-sine inverter. 120 V, 60 Hz. Edit the watts to match
-          each nameplate. Inverter losses are taken as 88%.
+          Sizing for a refrigerator, flat screen, internet, lights, and plug-in
+          medical devices on a listed pure-sine inverter. 120 V, 60 Hz. Edit
+          the watts to match each nameplate. Inverter losses are taken as 88%.
         </Text>
       </Stack>
 
@@ -791,9 +820,9 @@ export default function InverterSizing() {
           on negatives. Measure DC voltage on the inverter Bat+ and Bat−
           before you insert the fuses: it should match the battery, with
           positive on Bat+. Close the disconnect with the outlets empty,
-          confirm about 120 V, then plug in the refrigerator, the medical
-          device, and the lights. The charger’s AC cord stays in a utility
-          outlet.
+          confirm about 120 V, then plug in the refrigerator, the CPAP, the
+          flat screen, the internet gear, and the lights. The charger’s AC
+          cord stays in a utility outlet.
         </Text>
         <Callout tone="warning" title="Do not backfeed">
           Do not use a cord with a male plug on both ends. Do not plug the
@@ -926,7 +955,7 @@ export default function InverterSizing() {
             [
               String(Math.max(plan.on.length, 1)),
               "AC receptacles",
-              "Use the inverter’s outlets. Refrigerator on its own receptacle. Medical device on its own receptacle. Lights may use a 15 A strip that feeds lighting only.",
+              "Use the inverter’s outlets. Refrigerator and CPAP each get their own receptacle. Flat screen, modem, router, and lights may share a 15 A strip.",
               priceRange(cost.outlets),
             ],
             [
@@ -946,7 +975,7 @@ export default function InverterSizing() {
         <Text size="small" tone="tertiary">
           Source: US street prices checked October 2026. At the default size, a
           listed 1,000 W 24 V pure-sine inverter is about $250–$650, and a
-          24 V 150 Ah LiFePO4 battery is about $800–$1,600. The parts total
+          24 V 200 Ah LiFePO4 battery is about $1,050–$2,200. The parts total
           omits the series jumper and the monitor. Estimates follow the
           voltage, amp-hours, and inverter size selected above.
         </Text>
@@ -1008,11 +1037,11 @@ export default function InverterSizing() {
           ]}
           columnAlign={["left", "center", "right", "right", "right", "right"]}
           rowTone={loads.map((load) =>
-            load.id === "fridge"
-              ? "info"
+            load.id === "cpap" || load.id === "o2" || load.id === "neb"
+              ? "warning"
               : load.id === "lights"
                 ? "neutral"
-                : "warning",
+                : "info",
           )}
           rows={loads.map((load) => [
             load.name,
@@ -1053,7 +1082,10 @@ export default function InverterSizing() {
         />
         <Text size="small" tone="secondary">
           Refrigerator start is often 800–1,500 W on a conventional compressor.
-          A variable-speed fridge can be much lower. CPAP with a heated
+          A flat screen is often 60–150 W; 100 W and 6 hours is a planning
+          default. A modem plus Wi-Fi router is often 15–30 W and is counted
+          for the whole day. That backup only helps while the cable or fiber
+          network outside the house still has power. CPAP with a heated
           humidifier is often 60–90 W. A stationary oxygen concentrator is
           often 300–600 W and, left on all day, sets the battery size. A
           yellow EnergyGuide label is better than a watt guess: yearly kWh ÷
