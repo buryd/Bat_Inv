@@ -21,7 +21,15 @@ import {
   useMemo,
 } from "cursor/canvas";
 
-type LoadId = "fridge" | "lights" | "tv" | "internet" | "cpap" | "o2" | "neb";
+type LoadId =
+  | "fridge"
+  | "lights"
+  | "tv"
+  | "internet"
+  | "airway"
+  | "cpap"
+  | "o2"
+  | "neb";
 
 interface Load {
   id: LoadId;
@@ -66,9 +74,17 @@ const DEFAULT_LOADS: Load[] = [
     hours: 24,
   },
   {
+    id: "airway",
+    name: "Airway clearance",
+    enabled: true,
+    watts: 250,
+    surge: 400,
+    hours: 1,
+  },
+  {
     id: "cpap",
     name: "CPAP with humidifier",
-    enabled: true,
+    enabled: false,
     watts: 70,
     surge: 90,
     hours: 8,
@@ -97,8 +113,26 @@ const FUSE_SIZES = [30, 40, 50, 60, 80, 100, 125, 150, 175, 200, 250, 300, 350, 
 const EFF = 0.88;
 
 const HOURS: Record<"overnight" | "day", Record<LoadId, number>> = {
-  overnight: { fridge: 3, lights: 4, tv: 4, internet: 8, cpap: 8, o2: 8, neb: 0.5 },
-  day: { fridge: 8, lights: 8, tv: 6, internet: 24, cpap: 8, o2: 24, neb: 1 },
+  overnight: {
+    fridge: 3,
+    lights: 4,
+    tv: 4,
+    internet: 8,
+    airway: 0.5,
+    cpap: 8,
+    o2: 8,
+    neb: 0.5,
+  },
+  day: {
+    fridge: 8,
+    lights: 8,
+    tv: 6,
+    internet: 24,
+    airway: 1,
+    cpap: 8,
+    o2: 24,
+    neb: 1,
+  },
 };
 
 function nextAtLeast(steps: number[], value: number): number {
@@ -518,7 +552,7 @@ function WiringDiagram({
 }
 
 export default function InverterSizing() {
-  const [loads, setLoads] = useCanvasState<Load[]>("loads", DEFAULT_LOADS);
+  const [loads, setLoads] = useCanvasState<Load[]>("loads-airway", DEFAULT_LOADS);
   useEffect(() => {
     setLoads((prev) => {
       const ids = new Set(prev.map((load) => load.id));
@@ -619,6 +653,7 @@ export default function InverterSizing() {
 
   const highCurrent = volts === 12 && plan.dcAmps > 100;
   const oxygenOn = loads.some((load) => load.id === "o2" && load.enabled);
+  const airwayOn = loads.some((load) => load.id === "airway" && load.enabled);
   const cost = {
     inverter: inverterPrice(plan.inverterW),
     battery: batteryPrice(volts, plan.ahBuy, chemistry),
@@ -660,20 +695,23 @@ export default function InverterSizing() {
       <Stack gap={6}>
         <H1>120 V battery backup</H1>
         <Text tone="secondary">
-          Sizing for a refrigerator, flat screen, internet, lights, and plug-in
-          medical devices on a listed pure-sine inverter. 120 V, 60 Hz. Edit
-          the watts to match each nameplate. Inverter losses are taken as 88%.
+          Sizing for a refrigerator, flat screen, internet, lights, and an
+          airway-clearance device that clears phlegm, on a listed pure-sine
+          inverter. 120 V, 60 Hz. Edit the watts to match each nameplate.
+          Inverter losses are taken as 88%.
         </Text>
       </Stack>
 
       <Callout tone="warning" title="Medical devices">
-        Read watts from the label on the CPAP, oxygen concentrator, or
-        nebulizer. A ventilator or any life-support device needs the backup
-        plan from the prescribing clinician, including the device’s own
-        battery and a non-electric backup when the care plan requires one. A
-        household inverter does not replace that plan. If the device has an
-        approved DC cable, power it from the battery and keep it off the
-        inverter.
+        Read watts from the label on the airway-clearance device, nebulizer,
+        CPAP, or oxygen concentrator. A chest vest or cough-assist machine is
+        the load that clears phlegm. Run one full treatment on this inverter
+        before you rely on it, on the device’s own receptacle. If it has its
+        own battery, keep that battery charged. Follow the device manual where
+        it limits inverter or generator power. A ventilator or other
+        life-support device needs the backup plan from the prescribing
+        clinician, including the device battery and any cylinders the care
+        plan requires. A household inverter does not replace that plan.
       </Callout>
 
       <Grid columns={4} gap={16}>
@@ -820,9 +858,10 @@ export default function InverterSizing() {
           on negatives. Measure DC voltage on the inverter Bat+ and Bat−
           before you insert the fuses: it should match the battery, with
           positive on Bat+. Close the disconnect with the outlets empty,
-          confirm about 120 V, then plug in the refrigerator, the CPAP, the
-          flat screen, the internet gear, and the lights. The charger’s AC
-          cord stays in a utility outlet.
+          confirm about 120 V, then plug in the refrigerator, the
+          airway-clearance device, the flat screen, the internet gear, and
+          the lights. Run one treatment while the refrigerator is plugged in.
+          The charger’s AC cord stays in a utility outlet.
         </Text>
         <Callout tone="warning" title="Do not backfeed">
           Do not use a cord with a male plug on both ends. Do not plug the
@@ -955,7 +994,7 @@ export default function InverterSizing() {
             [
               String(Math.max(plan.on.length, 1)),
               "AC receptacles",
-              "Use the inverter’s outlets. Refrigerator and CPAP each get their own receptacle. Flat screen, modem, router, and lights may share a 15 A strip.",
+              "Use the inverter’s outlets. Refrigerator and airway-clearance device each get their own receptacle. Flat screen, modem, router, and lights may share a 15 A strip.",
               priceRange(cost.outlets),
             ],
             [
@@ -1002,8 +1041,9 @@ export default function InverterSizing() {
           />
           <Text size="small" tone="tertiary">
             Watt-hours = running watts × hours. Refrigerator hours are
-            compressor-on time, not hours the door is closed. Source: planning
-            defaults edited in the table below.
+            compressor-on time, not hours the door is closed. Airway-clearance
+            hours are treatment time. Source: planning defaults edited in the
+            table below.
           </Text>
         </Stack>
       ) : (
@@ -1037,7 +1077,10 @@ export default function InverterSizing() {
           ]}
           columnAlign={["left", "center", "right", "right", "right", "right"]}
           rowTone={loads.map((load) =>
-            load.id === "cpap" || load.id === "o2" || load.id === "neb"
+            load.id === "airway" ||
+            load.id === "cpap" ||
+            load.id === "o2" ||
+            load.id === "neb"
               ? "warning"
               : load.id === "lights"
                 ? "neutral"
@@ -1085,13 +1128,27 @@ export default function InverterSizing() {
           A flat screen is often 60–150 W; 100 W and 6 hours is a planning
           default. A modem plus Wi-Fi router is often 15–30 W and is counted
           for the whole day. That backup only helps while the cable or fiber
-          network outside the house still has power. CPAP with a heated
-          humidifier is often 60–90 W. A stationary oxygen concentrator is
-          often 300–600 W and, left on all day, sets the battery size. A
-          yellow EnergyGuide label is better than a watt guess: yearly kWh ÷
-          365 is the fridge’s daily energy.
+          network outside the house still has power. Airway-clearance hours
+          are treatment time: a chest vest is often 150–400 W, and a
+          cough-assist machine is often up to about 300–400 W. One hour is
+          about three 20-minute sessions. A compressor nebulizer is often
+          50–130 W. CPAP with a heated humidifier is often 60–90 W and is off
+          in this profile. A stationary oxygen concentrator is often 300–600 W
+          and, left on all day, sets the battery size. A yellow EnergyGuide
+          label is better than a watt guess: yearly kWh ÷ 365 is the fridge’s
+          daily energy.
         </Text>
       </Stack>
+
+      {airwayOn ? (
+        <Callout tone="info" title="Airway clearance is on">
+          A vest or cough-assist machine runs in short treatments, so it adds
+          less daily energy than the refrigerator. It is still a motor load.
+          Give it its own receptacle and a pure-sine inverter. If the nameplate
+          is above 400 W, or treatments run for several hours, raise the watts
+          and hours in the table and buy the inverter and battery that result.
+        </Callout>
+      ) : null}
 
       {oxygenOn ? (
         <Callout tone="warning" title="Oxygen concentrator is on">
